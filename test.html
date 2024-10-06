@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <!-- button -->
+    <input type="file" id="csvFileInput" accept=".csv" /> 
+
+    <h1>Plant Information</h1>
+    <ul id="plant-info"></ul>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="binaryTree.js"></script>
+
+    <script>
+    let bst = new BinaryTree(); //SORTS DATA
+    let countries = {}; //COUNTRIES 
+    const countriesSeen = []; //logs countries seen
+    var count = 0;
+    var prev = "";
+
+    // loading the countries from csv file
+    const fileInput = document.getElementById('csvFileInput');
+
+    fileInput.addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      if (file) {
+        Papa.parse(file, {
+          header: true, 
+          worker: true,
+          complete: function(results) {
+            const fetchPromises = []; // Store fetch promises
+
+            for (let i = 0; i < results.data.length; i++) {
+              const temp = results.data[i].Item;
+              
+              // Update countriesSeen array when the Area changes
+              if (results.data[i].Area !== undefined && prev !== results.data[i].Area) {
+                countriesSeen[count] = results.data[i].Area;
+                count++;
+              }
+
+              // Fetch plant information if the item is not "Other"
+              if (temp !== "Other") {
+                const plantName = temp;
+                const apiKey = "t19LoAkIShUzLPB4QhVoKCVB0usU9TQkgE4fbqTebcG0OVBhRn"; //API 
+                const url = `https://plant.id/api/v3/kb/plants/name_search?q=${plantName}`;
+
+                // Push the fetch promise to the array
+                fetchPromises.push(
+                  fetch(url, {
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Api-Key": apiKey
+                    }
+                  })
+                  .then(response => {
+                    if (!response.ok) {
+                      throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                  })
+                  .then(data => {
+                    if (data.entities.length!=0) {
+                      const token = data.entities[0].access_token;
+                      const url2 = `https://plant.id/api/v3/kb/plants/${token}?details=common_names,url,description,taxonomy,rank,gbif_id,inaturalist_id,image,synonyms,edible_parts,watering,propagation_methods&language=en`;
+
+                      return fetch(url2, {
+                        headers: {
+                          "Content-Type": "application/json",
+                          "Api-Key": apiKey
+                        }
+                      })
+                      .then(response => {
+                        if (!response.ok) {
+                          throw new Error('Network response was not ok');
+                        }   
+                        return response.json();
+                      })
+                      .then(data => {
+                        let moist = 0;
+                        if (data.watering != null) {
+                          moist = data.watering.min + data.watering.max;
+                        }
+                        bst.insert(moist,results.data[i].Area, results.data[i].Item);
+                      });
+                    }
+                  })
+                  .catch(error => {
+                    console.error('Fetch error:', error);
+                  })
+                );
+              }
+
+              prev = results.data[i].Area;
+            }
+
+            // Ensure all fetches are complete before proceeding
+            Promise.all(fetchPromises).then(() => {
+              for (let i = 0; i < countriesSeen.length; i++) {
+                const array = [];
+                countries[countriesSeen[i]] = bst.rangeList(countriesSeen[i], array, 0);
+                console.log(countries[countriesSeen[i]]);
+              }
+              console.log(countries);
+            }).catch(error => {
+              console.error('Error with fetches:', error);
+            });
+          },
+          error: function(error) {
+            console.error('Error:', error); // Logs any errors
+          }
+        });
+      }
+    });
+    </script>
+</body>
+</html>
